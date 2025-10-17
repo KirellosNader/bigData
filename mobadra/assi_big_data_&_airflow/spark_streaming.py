@@ -1,13 +1,10 @@
-# import findspark
-# تهيئة Spark للعمل في بيئة Docker
-# findspark.init()
+
 
 from pyspark.sql import SparkSession
 from pyspark.sql.functions import from_json, col, current_timestamp
 from pyspark.sql.types import StructType, StructField, StringType, DoubleType, LongType, IntegerType
 
-# تهيئة Spark Session
-# يجب أن نستخدم spark-master كعنوان بدلاً من localhost
+
 spark = SparkSession.builder \
     .appName("GPSDataProcessor") \
     .master("spark://spark-master:7077") \
@@ -18,8 +15,7 @@ spark = SparkSession.builder \
 spark.sparkContext.setLogLevel("ERROR")
 print("Spark Session created successfully.")
 
-# تعريف الـ Schema لبيانات GPS
-# يجب أن تتطابق هذه الأنواع مع ما ترسله fake_data.py
+
 gps_schema = StructType([
     StructField("device_id", StringType(), True),
     StructField("latitude", DoubleType(), True),
@@ -28,7 +24,7 @@ gps_schema = StructType([
     StructField("timestamp", LongType(), True)
 ])
 
-# 1. القراءة من Kafka
+
 kafka_topic = "gps_topic"
 kafka_brokers = "kafka:9092" # عنوان Kafka داخل شبكة Docker
 
@@ -41,7 +37,7 @@ df = spark.readStream \
 
 print(f"Reading from Kafka topic: {kafka_topic}")
 
-# 2. تحليل البيانات (Transformation)
+
 processed_df = df.selectExpr("CAST(value AS STRING)") \
     .select(from_json(col("value"), gps_schema).alias("data")) \
     .select(
@@ -53,15 +49,15 @@ processed_df = df.selectExpr("CAST(value AS STRING)") \
         current_timestamp().alias("processing_time")
     )
 
-# 3. الكتابة إلى Postgres (Sink)
+
 def write_to_postgres(batch_df, batch_id):
     """دالة لكتابة الـ Micro-batch إلى قاعدة بيانات PostgreSQL."""
     try:
-        # إذا كانت الدفعة فارغة، لا تفعل شيئًا
+        
         if batch_df.count() == 0:
             return
 
-        # إعدادات Postgres
+       
         jdbc_url = "jdbc:postgresql://postgres:5432/gps_db" # عنوان Postgres داخل شبكة Docker
         db_properties = {
             "user": "user",
@@ -70,10 +66,10 @@ def write_to_postgres(batch_df, batch_id):
             "dbtable": "realtime_gps_data" # اسم الجدول
         }
 
-        # يجب إعادة تسمية عمود الـ timestamp لأنه اسم محجوز في Postgres
+        
         final_df = batch_df.withColumnRenamed("event_timestamp_ms", "timestamp_ms")
         
-        # الكتابة إلى Postgres باستخدام وضع الإضافة (append)
+        
         final_df.write \
             .format("jdbc") \
             .option("url", jdbc_url) \
@@ -88,9 +84,9 @@ def write_to_postgres(batch_df, batch_id):
     
     except Exception as e:
         print(f"Error writing batch {batch_id} to Postgres: {e}")
-        # يمكنك إضافة منطق للمحاولة مرة أخرى هنا إذا لزم الأمر
+       
 
-# تشغيل الاستعلام الاسترشادي
+
 query = processed_df.writeStream \
     .foreachBatch(write_to_postgres) \
     .outputMode("update") \
